@@ -13,6 +13,11 @@ SSHD=${SSHD:-false}
 DB_PASSWORD=${DB_PASSWORD:-none}
 AUTO_SYNC=${AUTO_SYNC:-true}
 
+
+# Setup Data and link into system folders
+/config-data-folder.sh
+
+# Setup and start Redis
 if [ ! -d "/run/redis" ]; then
 	mkdir /run/redis
 fi
@@ -35,12 +40,7 @@ while  [ "${X}" != "PONG" ]; do
 done
 echo "Redis ready."
 
-
-if  [ ! -d /data ]; then
-	echo "Creating Data folder..."
-        mkdir /data
-fi
-
+# Setup and start Postgres
 if  [ ! -d /data/database ]; then
 	echo "Creating Database folder..."
 	mkdir /data/database
@@ -53,47 +53,10 @@ chown postgres:postgres -R /data/database
 echo "Starting PostgreSQL..."
 su -c "/usr/lib/postgresql/12/bin/pg_ctl -D /data/database start" postgres
 
-if  [ ! -d /data/ssh ]; then
-	echo "Creating SSH folder..."
-	mkdir /data/ssh
-	
-	rm -rf /etc/ssh/ssh_host_*
-	
-	dpkg-reconfigure openssh-server
-	
-	mv /etc/ssh/ssh_host_* /data/ssh/
-fi
+# Set timezone
+ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-if  [ ! -h /etc/ssh ]; then
-	rm -rf /etc/ssh
-	ln -s /data/ssh /etc/ssh
-fi
-
-if [ ! -f "/firstrun" ]; then
-	echo "Running first start configuration..."
-	
-	ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-	echo "Creating Greenbone Vulnerability system user..."
-	useradd --home-dir /usr/local/share/gvm gvm
-	
-	chown gvm:gvm -R /usr/local/share/openvas
-	chown gvm:gvm -R /usr/local/var/lib/openvas
-	
-	chown gvm:gvm -R /usr/local/share/gvm
-	
-	mkdir /usr/local/var/lib/gvm/cert-data
-	
-	chown gvm:gvm -R /usr/local/var/lib/gvm
-	chmod 770 -R /usr/local/var/lib/gvm
-	
-	chown gvm:gvm -R /usr/local/var/log/gvm
-	
-	chown gvm:gvm -R /usr/local/var/run
-	
-	touch /firstrun
-fi
-
+# Setup Database for GVM
 if [ ! -f "/data/firstrun" ]; then
 	echo "Creating Greenbone Vulnerability Manager database"
 	su -c "createuser -DRS gvm" postgres
@@ -146,6 +109,8 @@ if [ ! -d /var/run/ospd ]; then
   mkdir /var/run/ospd
 fi
 
+
+# Start Postfix, GVM aand OSPD
 echo "Starting Postfix for report delivery by email"
 sed -i "s/^relayhost.*$/relayhost = ${RELAYHOST}:${SMTPPORT}/" /etc/postfix/main.cf
 service postfix start
@@ -193,9 +158,14 @@ else
 	su -c "gsad --verbose --http-only --timeout=$TIMEOUT --no-redirect --mlisten=127.0.0.1 --mport=9390 --port=9392" gvm
 fi
 
+# Start SSHD
 if [ $SSHD == "true" ]; then
 	echo "Starting OpenSSH Server..."
 	
+	if  [ ! -h /etc/ssh ]; then
+		rm -rf /etc/ssh
+		ln -s /data/ssh /etc/ssh
+	fi
 	if  [ ! -d /data/scanner-ssh-keys ]; then
 		echo "Creating scanner SSH keys folder..."
 		mkdir /data/scanner-ssh-keys

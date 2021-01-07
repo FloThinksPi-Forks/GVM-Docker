@@ -153,4 +153,8 @@ COPY scripts/* /
 
 RUN chmod +x /*.sh
 
+COPY configure-image.sh /configure-image.sh
+
+RUN bash /configure-image.sh && rm -f /install-pkgs.sh && rm -f /configure-image.sh
+
 CMD '/start.sh'
